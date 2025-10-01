@@ -84,7 +84,7 @@ dd if="${loopdev}p2" of=/tmp/kernel-new.bin bs=1M status=none
 # we're giving it 5 extra MBs to allow the busybox binaries to be installed & our bootstrapped stuff
 initramfs_size=$(($(du -sb "$initramfs" | awk '{print $1}' | numfmt --to=iec | awk '{print int($1) + ($1 > int($1))}') + 3))
 kernsize=$(($(du -sb /tmp/kernel-new.bin | awk '{print $1}' | numfmt --to=iec | awk '{print int($1) + ($1 > int($1))}')))
-# add another meg to the kernel just incase of resigning issues (:spoob:)
+# add another meg to the kernel just incase of resigning issues
 
 echo "fdisk!"
 
