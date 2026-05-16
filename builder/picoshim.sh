@@ -1,11 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PicoShim Builder
-# 2024
+# 2026
+# Fixed by Laveden, original credit goes to kxtzownsu
+
+COLOR_RED='\033[0;31m'
+COLOR_RESET='\033[0m'
 
 if [ $EUID -ne 0 ]; then
-  echo "You MUST run this program with sudo or as root."
+  printf "${COLOR_RED}You MUST run this program with sudo or as root.\n"
   exit 1
 fi
+
+deps=("binwalk" "fdisk" "cgpt" "mkfs.ext2" "numfmt")
+for cmd in "${deps[@]}"; do
+  if ! command -v "$cmd" &>/dev/null; then
+    printf "${COLOR_RED}'$cmd' not found in path${COLOR_RESET}\n"
+    exit 1
+  fi
+done
 
 if [ "$1" == "" ]; then
   echo "No shim passed, please pass a shim to the args."
@@ -21,15 +33,16 @@ ARCHITECTURE="$(uname -m)"
 case "$ARCHITECTURE" in
 	*x86_64* | *x86-64*) ARCHITECTURE=x86_64 ;;
 	*aarch64* | *armv8*) ARCHITECTURE=aarch64 ;;
-	*) fail "Unsupported architecture $ARCHITECTURE" ;;
+	*) fail "${COLOR_RED}Unsupported architecture ${ARCHITECTURE}${COLOR_RESET}" ;;
 esac
 
 source ${SCRIPT_DIR}/lib/extract_initramfs.sh
 source ${SCRIPT_DIR}/lib/detect_arch.sh
 source ${SCRIPT_DIR}/lib/rootfs_utils.sh
 
-echo "PicoShim builder"
-echo "requires: binwalk, fdisk, cgpt, mkfs.ext2, numfmt"
+echo "--------------------"
+echo "| PicoShim builder |"
+echo "--------------------"
 
 SHIM="$1"
 initramfs="/tmp/picoshim_initramfs"
@@ -40,7 +53,6 @@ SFDISK="${SCRIPT_DIR}/bins/$ARCHITECTURE/sfdisk"
 
 # size of stateful partition in MiB
 state_size="1"
-
 
 rm -rf /tmp/kernel*
 losetup -D

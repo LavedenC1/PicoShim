@@ -31,3 +31,5 @@ kxtzownsu - writing picoshim & the builder
 ading2210 (vk6) - the extract_initramfs code
 
 BinBashBanana (OlyB) - the shim shrinking code
+
+laveden - fixing this
