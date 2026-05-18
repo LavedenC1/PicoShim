@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # PicoShim Builder
 # 2026
-# Fixed by Laveden, original credit goes to kxtzownsu
+# Improved by Laveden, original credit goes to kxtzownsu
+
+set -e
+
+COLOR_RESET='\033[0m'
 
 COLOR_RED='\033[0;31m'
-COLOR_RESET='\033[0m'
+COLOR_GREEN='\033[32m'
 
 if [ $EUID -ne 0 ]; then
   printf "${COLOR_RED}You MUST run this program with sudo or as root.\n"
@@ -19,9 +23,16 @@ for cmd in "${deps[@]}"; do
   fi
 done
 
+# binwalk --extract behavior changed in v3.x.x, causing the script to fail
+#binwalk_ver=$(binwalk --version | cut -d " " -f 2 | cut -d "." -f "1") || :
+#if [ "$binwalk_ver" != "2" ]; then
+#  printf "${COLOR_RED}'binwalk' must be version 2.x.x"
+#  exit 1
+#fi
+
 if [ "$1" == "" ]; then
-  echo "No shim passed, please pass a shim to the args."
-  echo "$@"
+  printf "${COLOR_RED}No shim passed, please pass a shim to the args.${COLOR_RESET}\n"
+  # echo "$@" # I honestly don't know why this line is here
   exit 1
 fi
 
@@ -54,25 +65,30 @@ SFDISK="${SCRIPT_DIR}/bins/$ARCHITECTURE/sfdisk"
 # size of stateful partition in MiB
 state_size="1"
 
+printf "${COLOR_GREEN}Cleaning up previous run${COLOR_RESET}\n"
+
 rm -rf /tmp/kernel*
 losetup -D
 
 # cleanup previous instances of picoshim, if they existed
-umount -R $initramfs  > /dev/null 2>&1
+umount -R $initramfs > /dev/null 2>&1 || :
 rm -rf $initramfs
 mkdir -p $initramfs
 
-umount -R $rootfs_mnt  > /dev/null 2>&1
+umount -R $rootfs_mnt  > /dev/null 2>&1 || :
 rm -rf $rootfs_mnt
 mkdir -p $rootfs_mnt
 
-umount -R $state_mnt  > /dev/null 2>&1
+umount -R $state_mnt  > /dev/null 2>&1 || :
 rm -rf $state_mnt
 mkdir -p $state_mnt
 
 rm -rf /tmp/loop0
 
 # the amount of headaches loop0 has caused me....
+# lol, just use /dev/loop0
+printf "${COLOR_GREEN}Setting up loop device${COLOR_RESET}\n"
+
 if ! $(losetup | grep loop0); then
 	touch /tmp/loop0
 	dd if=/dev/urandom of=/tmp/loop0 bs=1 count=512 status=none > /dev/null 2>&1
@@ -85,20 +101,22 @@ if [ -f "$SHIM" ]; then
   shrink_partitions "$SHIM"
   losetup -P "$loopdev" "$SHIM"
 else
+  printf "${COLOR_RED}Invalid path, please make sure it is correct${COLOR_RESET}\n"
   exit 1
 fi
 
 arch=$(detect_arch $loopdev)
 extract_initramfs_full "$loopdev" "$initramfs" "/tmp/shim_kernel/kernel.img" "$arch"
-dd if="${loopdev}p2" of=/tmp/kernel-new.bin bs=1M status=none
+dd if="${loopdev}p2" of=/tmp/kernel-new.bin bs=1M status=progress iflag=direct oflag=direct # bypass os cache
 
 # gets the initramfs size, e.g: 6.5M, and rounds it to the nearest whole number, e.g: 7M
 # we're giving it 5 extra MBs to allow the busybox binaries to be installed & our bootstrapped stuff
+# geniunely what am i reading lmao
 initramfs_size=$(($(du -sb "$initramfs" | awk '{print $1}' | numfmt --to=iec | awk '{print int($1) + ($1 > int($1))}') + 3))
 kernsize=$(($(du -sb /tmp/kernel-new.bin | awk '{print $1}' | numfmt --to=iec | awk '{print int($1) + ($1 > int($1))}')))
 # add another meg to the kernel just incase of resigning issues
 
-echo "fdisk!"
+printf "${COLOR_GREEN}Recreating partitions${COLOR_RESET}\n"
 
 fdisk "$loopdev" <<EOF > /dev/null 2>&1 
 d
@@ -119,7 +137,7 @@ p
 
 w
 EOF
-dd if=/tmp/kernel-new.bin of="${loopdev}p2" bs=1M oflag=direct status=none conv=notrunc
+dd if=/tmp/kernel-new.bin of="${loopdev}p2" bs=1M iflag=direct oflag=direct status=none conv=notrunc
 
 echo "creating new filesystem on rootfs"
 echo "y" | mkfs.ext2 "$loopdev"p3 -L ROOT-A > /dev/null 2>&1
